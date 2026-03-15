@@ -5,146 +5,253 @@ Contains all classes for pet care scheduling system
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
-from datetime import datetime
+import uuid
 
 
-@dataclass
-class Owner:
-    """Represents the pet owner and their constraints"""
-    name: str
-    available_time: int  # Total minutes available per day
-    preferences: Dict[str, any] = field(default_factory=dict)
-    
-    def update_available_time(self, new_time: int) -> None:
-        """Update the available time constraint"""
-        pass
-    
-    def get_info(self) -> Dict:
-        """Return summary of owner details"""
-        pass
-
-
-@dataclass
-class Pet:
-    """Represents the pet being cared for"""
-    name: str
-    species: str
-    age: Optional[int] = None
-    special_needs: List[str] = field(default_factory=list)
-    
-    def get_info(self) -> Dict:
-        """Return summary of pet details"""
-        pass
+def generate_task_id() -> str:
+    """Generate a unique task ID"""
+    return str(uuid.uuid4())[:8]
 
 
 @dataclass
 class Task:
-    """Represents a single pet care activity"""
-    id: str
-    name: str
-    task_type: str  # walk, feeding, medication, grooming, enrichment
+    """Represents a single activity with description, time, frequency, and completion status"""
+    description: str
     duration: int  # Minutes required
+    frequency: str  # daily, weekly, etc.
     priority: int  # 1-5 scale (5 = critical, 1 = optional)
-    time_preference: Optional[str] = None  # morning, evening, anytime
+    completed: bool = False
+    id: str = field(default_factory=generate_task_id)
     
-    def update(self, **kwargs) -> None:
-        """Modify task details"""
-        pass
+    def __post_init__(self):
+        """Validate task data"""
+        if self.priority < 1 or self.priority > 5:
+            raise ValueError("Priority must be between 1 and 5")
+        if self.duration <= 0:
+            raise ValueError("Duration must be positive")
+    
+    def mark_complete(self) -> None:
+        """Mark task as completed"""
+        self.completed = True
+    
+    def mark_incomplete(self) -> None:
+        """Mark task as incomplete"""
+        self.completed = False
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for storage/display"""
-        pass
+        return {
+            'id': self.id,
+            'description': self.description,
+            'duration': self.duration,
+            'frequency': self.frequency,
+            'priority': self.priority,
+            'completed': self.completed
+        }
 
 
-class TaskManager:
-    """Manages the collection of all tasks"""
+class Pet:
+    """Stores pet details and a list of tasks"""
     
-    def __init__(self):
+    def __init__(self, name: str, species: str, age: Optional[int] = None):
+        self.name = name
+        self.species = species
+        self.age = age
         self.tasks: List[Task] = []
     
     def add_task(self, task: Task) -> None:
-        """Add a new task"""
-        pass
+        """Add a task to this pet's task list"""
+        self.tasks.append(task)
     
     def remove_task(self, task_id: str) -> bool:
-        """Delete a task by ID"""
-        pass
-    
-    def edit_task(self, task_id: str, **kwargs) -> bool:
-        """Modify existing task"""
-        pass
+        """Remove a task by ID"""
+        for i, task in enumerate(self.tasks):
+            if task.id == task_id:
+                self.tasks.pop(i)
+                return True
+        return False
     
     def get_task(self, task_id: str) -> Optional[Task]:
-        """Retrieve specific task by ID"""
-        pass
+        """Retrieve a specific task by ID"""
+        for task in self.tasks:
+            if task.id == task_id:
+                return task
+        return None
     
     def get_all_tasks(self) -> List[Task]:
-        """Return all tasks"""
-        pass
+        """Return all tasks for this pet"""
+        return self.tasks
     
-    def get_total_duration(self) -> int:
-        """Calculate sum of all task durations"""
-        pass
+    def get_incomplete_tasks(self) -> List[Task]:
+        """Return only incomplete tasks"""
+        return [task for task in self.tasks if not task.completed]
+    
+    def get_info(self) -> Dict:
+        """Return summary of pet details"""
+        return {
+            'name': self.name,
+            'species': self.species,
+            'age': self.age,
+            'total_tasks': len(self.tasks),
+            'incomplete_tasks': len(self.get_incomplete_tasks())
+        }
 
 
-@dataclass
-class ScheduledTask:
-    """A task with timing and explanation"""
-    task: Task
-    time_slot: str  # e.g., "8:00 AM - 8:30 AM" or order number
-    reason: str  # Why it was scheduled at this time/priority
+class Owner:
+    """Manages multiple pets and provides access to all their tasks"""
     
-    def to_dict(self) -> Dict:
-        """Convert for display"""
-        pass
-
-
-class DailyPlan:
-    """Represents the output schedule with reasoning"""
+    def __init__(self, name: str, available_time: int):
+        self.name = name
+        self.available_time = available_time  # Total minutes available per day
+        self.pets: List[Pet] = []
     
-    def __init__(self, date: Optional[str] = None):
-        self.scheduled_tasks: List[ScheduledTask] = []
-        self.unscheduled_tasks: List[Task] = []
-        self.total_time: int = 0
-        self.date: str = date or datetime.now().strftime("%Y-%m-%d")
-        self.reasoning: str = ""
+    def add_pet(self, pet: Pet) -> None:
+        """Add a pet to the owner's care"""
+        self.pets.append(pet)
     
-    def add_scheduled_task(self, scheduled_task: ScheduledTask) -> None:
-        """Add a task to the plan"""
-        pass
+    def remove_pet(self, pet_name: str) -> bool:
+        """Remove a pet by name"""
+        for i, pet in enumerate(self.pets):
+            if pet.name == pet_name:
+                self.pets.pop(i)
+                return True
+        return False
     
-    def add_unscheduled_task(self, task: Task) -> None:
-        """Add a task that couldn't be scheduled"""
-        pass
+    def get_pet(self, pet_name: str) -> Optional[Pet]:
+        """Retrieve a specific pet by name"""
+        for pet in self.pets:
+            if pet.name == pet_name:
+                return pet
+        return None
     
-    def get_summary(self) -> str:
-        """Return human-readable summary"""
-        pass
+    def get_all_pets(self) -> List[Pet]:
+        """Return all pets"""
+        return self.pets
     
-    def to_dict(self) -> Dict:
-        """Convert for display"""
-        pass
+    def get_all_tasks(self) -> List[tuple[Pet, Task]]:
+        """Get all tasks across all pets with pet association"""
+        all_tasks = []
+        for pet in self.pets:
+            for task in pet.get_all_tasks():
+                all_tasks.append((pet, task))
+        return all_tasks
+    
+    def get_all_incomplete_tasks(self) -> List[tuple[Pet, Task]]:
+        """Get all incomplete tasks across all pets"""
+        incomplete_tasks = []
+        for pet in self.pets:
+            for task in pet.get_incomplete_tasks():
+                incomplete_tasks.append((pet, task))
+        return incomplete_tasks
+    
+    def update_available_time(self, new_time: int) -> None:
+        """Update the available time constraint"""
+        if new_time < 0:
+            raise ValueError("Available time cannot be negative")
+        self.available_time = new_time
+    
+    def get_info(self) -> Dict:
+        """Return summary of owner details"""
+        return {
+            'name': self.name,
+            'available_time': self.available_time,
+            'total_pets': len(self.pets),
+            'total_tasks': sum(len(pet.tasks) for pet in self.pets)
+        }
 
 
 class Scheduler:
-    """Core logic that generates the daily plan"""
+    """The 'Brain' that retrieves, organizes, and manages tasks across pets"""
     
-    def __init__(self, owner: Owner, tasks: List[Task]):
+    def __init__(self, owner: Owner):
         self.owner = owner
-        self.tasks = tasks
     
-    def generate_plan(self) -> DailyPlan:
-        """Main algorithm: generates and returns DailyPlan"""
-        pass
+    def generate_daily_plan(self) -> Dict:
+        """
+        Generate a daily plan based on available time and task priorities
+        Returns a dict with scheduled tasks, unscheduled tasks, and reasoning
+        """
+        # Get all incomplete tasks
+        incomplete_tasks = self.owner.get_all_incomplete_tasks()
+        
+        # Sort by priority (highest first), then by duration (shortest first for ties)
+        sorted_tasks = sorted(
+            incomplete_tasks,
+            key=lambda x: (-x[1].priority, x[1].duration)
+        )
+        
+        scheduled = []
+        unscheduled = []
+        remaining_time = self.owner.available_time
+        reasoning = []
+        
+        # Schedule tasks that fit within time constraint
+        for pet, task in sorted_tasks:
+            if self._fits_in_time(task, remaining_time):
+                scheduled.append((pet, task))
+                remaining_time -= task.duration
+                reasoning.append(
+                    f"✓ {pet.name}: {task.description} (Priority {task.priority}, {task.duration} min)"
+                )
+            else:
+                unscheduled.append((pet, task))
+                reasoning.append(
+                    f"✗ {pet.name}: {task.description} - Not enough time (needs {task.duration} min, only {remaining_time} min left)"
+                )
+        
+        return {
+            'scheduled': scheduled,
+            'unscheduled': unscheduled,
+            'total_time_used': self.owner.available_time - remaining_time,
+            'time_remaining': remaining_time,
+            'reasoning': '\n'.join(reasoning)
+        }
     
-    def _sort_by_priority(self) -> List[Task]:
-        """Helper: sort tasks by priority (highest first)"""
-        pass
+    def get_tasks_by_priority(self, priority: int) -> List[tuple[Pet, Task]]:
+        """Get all incomplete tasks of a specific priority level"""
+        all_tasks = self.owner.get_all_incomplete_tasks()
+        return [(pet, task) for pet, task in all_tasks if task.priority == priority]
+    
+    def get_tasks_by_pet(self, pet_name: str) -> List[Task]:
+        """Get all tasks for a specific pet"""
+        pet = self.owner.get_pet(pet_name)
+        if pet:
+            return pet.get_all_tasks()
+        return []
+    
+    def mark_task_complete(self, pet_name: str, task_id: str) -> bool:
+        """Mark a specific task as complete"""
+        pet = self.owner.get_pet(pet_name)
+        if pet:
+            task = pet.get_task(task_id)
+            if task:
+                task.mark_complete()
+                return True
+        return False
     
     def _fits_in_time(self, task: Task, remaining_time: int) -> bool:
         """Check if task fits within remaining time"""
-        pass
+        return task.duration <= remaining_time
     
-    def _explain_decision(self, task: Task, scheduled: bool) -> str:
-        """Generate reasoning for including/excluding task"""
-        pass
+    def _sort_by_priority(self, tasks: List[tuple[Pet, Task]]) -> List[tuple[Pet, Task]]:
+        """Helper: sort tasks by priority (highest first)"""
+        return sorted(tasks, key=lambda x: -x[1].priority)
+    
+    def get_summary(self) -> str:
+        """Get a text summary of the owner's situation"""
+        info = self.owner.get_info()
+        all_tasks = self.owner.get_all_incomplete_tasks()
+        total_duration = sum(task.duration for _, task in all_tasks)
+        
+        summary = f"Owner: {info['name']}\n"
+        summary += f"Available time: {info['available_time']} minutes\n"
+        summary += f"Pets: {info['total_pets']}\n"
+        summary += f"Incomplete tasks: {len(all_tasks)}\n"
+        summary += f"Total time needed: {total_duration} minutes\n"
+        
+        if total_duration > info['available_time']:
+            summary += f"\n⚠️ Warning: Not enough time for all tasks (short by {total_duration - info['available_time']} minutes)"
+        else:
+            summary += f"\n✓ All tasks can be completed with {info['available_time'] - total_duration} minutes to spare"
+        
+        return summary
