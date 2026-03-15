@@ -60,3 +60,35 @@ This implementation includes several intelligent scheduling improvements:
 
 All features are fully tested with pytest and demonstrated in `main.py`.
 
+## Testing PawPal+
+
+The test suite (`tests/test_pawpal.py`) includes **15 tests** covering:
+
+### Task Behaviors (4 tests)
+- Task completion status tracking
+- Frequency-based due date logic (daily/weekly tasks)
+- Never-completed tasks marked as due
+
+### Pet Management (1 test)
+- Adding tasks to pets and maintaining task lists
+
+### Scheduler Intelligence (10 tests)
+- **Priority scheduling**: Critical (Priority 5) tasks scheduled first
+- **Pet batching**: Tasks grouped by pet to reduce context switching
+- **Sorting correctness**: Tasks sorted by duration (ascending/descending)
+- **Recurrence logic**: Auto-creation of new tasks when recurring tasks are completed
+- **Conflict detection**: Handles insufficient time, zero time, and critical task competition
+
+### Run Tests
+```bash
+python3 -m pytest tests/test_pawpal.py -v
+
+### Confidence Level
+4 out of 5 stars
+
+
+## Final Reflectiion
+
+The core concept students need to understand is designing a constraint-based scheduling system that balances multiple competing priorities (time, task urgency, efficiency) while making intentional tradeoffs—not just implementing a simple greedy algorithm. Students are most likely to struggle with over-engineering their initial design (too many classes, too much abstraction) and with testing their scheduling logic thoroughly enough to catch edge cases like zero available time or multiple critical tasks competing for limited slots.
+
+AI is most helpful for brainstorming edge cases, generating test scenarios, and exploring tradeoffs (e.g., "What happens if two tasks have the same priority?"), but it can be misleading when it suggests overly complex architectures that look professional but don't match the actual problem scope—students must learn to simplify AI suggestions to fit their use case. To guide a student without giving the answer, I would ask: "Walk me through what happens in your scheduler when you have 30 minutes available and three Priority 5 tasks that each take 15 minutes—which ones get scheduled and why? How would you verify this behavior with a test?" This forces them to reason through their algorithm's logic, identify the gap (insufficient time for critical tasks), and think about how to validate their solution.
