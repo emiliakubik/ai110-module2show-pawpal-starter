@@ -5,6 +5,7 @@ Contains all classes for pet care scheduling system
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
+from datetime import datetime, timedelta
 import uuid
 
 
@@ -22,6 +23,7 @@ class Task:
     priority: int  # 1-5 scale (5 = critical, 1 = optional)
     completed: bool = False
     id: str = field(default_factory=generate_task_id)
+    last_completed: Optional[datetime] = None
     
     def __post_init__(self):
         """Validate task data"""
@@ -33,10 +35,28 @@ class Task:
     def mark_complete(self) -> None:
         """Mark task as completed"""
         self.completed = True
+        self.last_completed = datetime.now()
     
     def mark_incomplete(self) -> None:
         """Mark task as incomplete"""
         self.completed = False
+        self.last_completed = None
+    
+    def is_due_today(self) -> bool:
+        """Check if task is due today based on frequency and last completion"""
+        if not self.last_completed:
+            return True  # Never completed, so it's due
+        
+        days_since_completion = (datetime.now() - self.last_completed).days
+        
+        if self.frequency == "daily":
+            return days_since_completion >= 1
+        elif self.frequency == "weekly":
+            return days_since_completion >= 7
+        elif self.frequency == "monthly":
+            return days_since_completion >= 30
+        else:
+            return True  # Unknown frequency, assume due
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for storage/display"""
@@ -46,7 +66,8 @@ class Task:
             'duration': self.duration,
             'frequency': self.frequency,
             'priority': self.priority,
-            'completed': self.completed
+            'completed': self.completed,
+            'last_completed': self.last_completed.isoformat() if self.last_completed else None
         }
 
 
@@ -169,24 +190,80 @@ class Scheduler:
     def generate_daily_plan(self) -> Dict:
         """
         Generate a daily plan based on available time and task priorities
+        Improvements:
+        - Only schedules tasks due today (frequency-aware)
+        - Guarantees critical tasks (priority 5) are scheduled first
+        - Batches tasks by pet to reduce context switching
         Returns a dict with scheduled tasks, unscheduled tasks, and reasoning
         """
         # Get all incomplete tasks
         incomplete_tasks = self.owner.get_all_incomplete_tasks()
         
-        # Sort by priority (highest first), then by duration (shortest first for ties)
-        sorted_tasks = sorted(
-            incomplete_tasks,
-            key=lambda x: (-x[1].priority, x[1].duration)
-        )
+        # IMPROVEMENT 1: Filter to only tasks due today
+        due_tasks = [(pet, task) for pet, task in incomplete_tasks if task.is_due_today()]
+        
+        if not due_tasks:
+            return {
+                'scheduled': [],
+                'unscheduled': [],
+                'total_time_used': 0,
+                'time_remaining': self.owner.available_time,
+                'reasoning': 'No tasks due today!'
+            }
         
         scheduled = []
         unscheduled = []
         remaining_time = self.owner.available_time
         reasoning = []
         
-        # Schedule tasks that fit within time constraint
-        for pet, task in sorted_tasks:
+        # IMPROVEMENT 2: Critical Task Guarantees - Schedule priority 5 tasks first
+        critical_tasks = [t for t in due_tasks if t[1].priority == 5]
+        non_critical_tasks = [t for t in due_tasks if t[1].priority < 5]
+        
+        reasoning.append("=== Phase 1: Critical Tasks (Priority 5) ===")
+        for pet, task in sorted(critical_tasks, key=lambda x: x[1].duration):
+            if self._fits_in_time(task, remaining_time):
+                scheduled.append((pet, task))
+                remaining_time -= task.duration
+                reasoning.append(
+                    f"✓ {pet.name}: {task.description} (CRITICAL, {task.duration} min)"
+                )
+            else:
+                unscheduled.append((pet, task))
+                reasoning.append(
+                    f"✗ {pet.name}: {task.description} - Not enough time (needs {task.duration} min, only {remaining_time} min left)"
+                )
+        
+        # IMPROVEMENT 3: Pet Batching - Group tasks by pet, then sort by priority
+        reasoning.append("\n=== Phase 2: Other Tasks (Batched by Pet) ===")
+        
+        # Group non-critical tasks by pet
+        pet_task_groups = {}
+        for pet, task in non_critical_tasks:
+            if pet.name not in pet_task_groups:
+                pet_task_groups[pet.name] = []
+            pet_task_groups[pet.name].append((pet, task))
+        
+        # Sort each pet's tasks by priority, then duration
+        for pet_name in pet_task_groups:
+            pet_task_groups[pet_name].sort(
+                key=lambda x: (-x[1].priority, x[1].duration)
+            )
+        
+        # Schedule tasks pet by pet
+        while pet_task_groups and remaining_time > 0:
+            # Find pet with highest priority task remaining
+            best_pet = max(
+                pet_task_groups.keys(),
+                key=lambda p: pet_task_groups[p][0][1].priority if pet_task_groups[p] else 0
+            )
+            
+            if not pet_task_groups[best_pet]:
+                del pet_task_groups[best_pet]
+                continue
+            
+            pet, task = pet_task_groups[best_pet].pop(0)
+            
             if self._fits_in_time(task, remaining_time):
                 scheduled.append((pet, task))
                 remaining_time -= task.duration
@@ -197,6 +274,18 @@ class Scheduler:
                 unscheduled.append((pet, task))
                 reasoning.append(
                     f"✗ {pet.name}: {task.description} - Not enough time (needs {task.duration} min, only {remaining_time} min left)"
+                )
+            
+            # Remove pet from groups if no more tasks
+            if not pet_task_groups[best_pet]:
+                del pet_task_groups[best_pet]
+        
+        # Add any remaining unscheduled tasks
+        for pet_tasks in pet_task_groups.values():
+            for pet, task in pet_tasks:
+                unscheduled.append((pet, task))
+                reasoning.append(
+                    f"✗ {pet.name}: {task.description} - Not enough time"
                 )
         
         return {
@@ -220,12 +309,32 @@ class Scheduler:
         return []
     
     def mark_task_complete(self, pet_name: str, task_id: str) -> bool:
-        """Mark a specific task as complete"""
+        """Mark a specific task as complete
+        
+        For recurring tasks (daily, weekly, monthly), automatically creates
+        a new task instance for the next occurrence.
+        
+        Returns:
+            True if task was found and marked complete, False otherwise
+        """
         pet = self.owner.get_pet(pet_name)
         if pet:
             task = pet.get_task(task_id)
             if task:
                 task.mark_complete()
+                
+                # Auto-create recurring task for next occurrence
+                if task.frequency in ["daily", "weekly", "monthly"]:
+                    new_task = Task(
+                        description=task.description,
+                        duration=task.duration,
+                        frequency=task.frequency,
+                        priority=task.priority,
+                        completed=False
+                    )
+                    # Note: new_task gets a fresh ID and last_completed=None automatically
+                    pet.add_task(new_task)
+                
                 return True
         return False
     
@@ -236,6 +345,18 @@ class Scheduler:
     def _sort_by_priority(self, tasks: List[tuple[Pet, Task]]) -> List[tuple[Pet, Task]]:
         """Helper: sort tasks by priority (highest first)"""
         return sorted(tasks, key=lambda x: -x[1].priority)
+    
+    def sort_by_time(self, tasks: List[tuple[Pet, Task]], ascending: bool = True) -> List[tuple[Pet, Task]]:
+        """Sort tasks by duration (time required)
+        
+        Args:
+            tasks: List of (Pet, Task) tuples to sort
+            ascending: If True, shortest tasks first. If False, longest tasks first
+        
+        Returns:
+            Sorted list of (Pet, Task) tuples
+        """
+        return sorted(tasks, key=lambda x: x[1].duration, reverse=not ascending)
     
     def get_summary(self) -> str:
         """Get a text summary of the owner's situation"""

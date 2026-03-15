@@ -42,3 +42,21 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
+## Smarter Scheduling
+
+This implementation includes several intelligent scheduling improvements:
+
+### Core Scheduling Algorithm
+- **Critical Task Guarantees** - Priority 5 tasks are always scheduled first, ensuring critical care (medications, feeding) never gets skipped
+- **Frequency-Aware Filtering** - Only schedules tasks due today based on their frequency (daily/weekly/monthly) and last completion timestamp
+- **Pet Batching** - Groups tasks by pet to minimize context switching and improve workflow efficiency
+
+### Utility Methods
+- **Sort by Time** - `sort_by_time()` method sorts tasks by duration (shortest-first or longest-first strategies)
+- **Filter by Pet/Status** - Built-in methods to filter tasks by pet name, completion status, or priority level
+
+### Automation
+- **Auto-Recurring Tasks** - When a recurring task (daily/weekly/monthly) is marked complete, a fresh instance is automatically created for the next occurrence, maintaining task continuity
+
+All features are fully tested with pytest and demonstrated in `main.py`.
+
